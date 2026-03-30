@@ -534,6 +534,7 @@ async function loadFromSheet(fromSetup=false) {
     if (data.error) throw new Error(data.error);
 
     rows = data.rows || [];
+    _patientsCache = null; // clear cache
     lastSync = new Date();
     document.getElementById('syncTime').textContent = 'Dikemaskini: ' + lastSync.toLocaleTimeString('ms-MY');
     setSyncStatus('ok', 'Bersambung ke Google Sheets (' + rows.length + ' rekod)');
@@ -632,15 +633,18 @@ function autoCalcAge(icVal) {
   </div>`;
 }
 
-// Get unique patients from rows (by IC)
+// Get unique patients from rows (cached)
+let _patientsCache = null;
 function getPatients() {
+  if (_patientsCache) return _patientsCache;
   const map = {};
   rows.forEach(r => {
     const ic = r['No. IC'];
     if (!ic) return;
     if (!map[ic]) map[ic] = { name: r['Nama Pesakit'], ic, phone: r['No. Telefon']||'', gender: r['Jantina']||'', age: r['Umur']||'', mrn: r['MRN']||'' };
   });
-  return Object.values(map);
+  _patientsCache = Object.values(map);
+  return _patientsCache;
 }
 
 function getVisitsForIC(ic) {
@@ -657,22 +661,33 @@ function formatDate(d) {
 // ══════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════
+// ── Paginated patient list to prevent freeze ──
+let _allPatients = [];
+let _visibleCount = 50;
+
 function renderPatientList(filter='') {
   const list = document.getElementById('patientList');
   let patients = getPatients();
   const fl = filter.toLowerCase();
-  // Apply text search
   if (fl) patients = patients.filter(p => p.name.toLowerCase().includes(fl) || p.ic.includes(fl));
-  // Apply dashboard filter
   patients = getFilteredPatients(patients, currentFilter);
   document.getElementById('patientCount').textContent = patients.length;
+  _allPatients = patients;
+  _visibleCount = 50;
+  renderVisiblePatients();
+}
+
+function renderVisiblePatients() {
+  const list = document.getElementById('patientList');
+  const patients = _allPatients;
 
   if (patients.length === 0) {
     list.innerHTML = '<div class="empty-list">' + (rows.length === 0 ? 'Tiada rekod dalam sheet.<br>Tambah pesakit baru.' : 'Tiada rekod dijumpai.') + '</div>';
     return;
   }
 
-  list.innerHTML = patients.map(p => {
+  const visible = patients.slice(0, _visibleCount);
+  const html = visible.map(p => {
     const visits = getVisitsForIC(p.ic);
     const last = visits[0];
     const dot = getStatusDot(last);
@@ -686,6 +701,22 @@ function renderPatientList(filter='') {
       <div class="patient-status-dot ${dot}"></div>
     </div>`;
   }).join('');
+
+  // Add load more button if needed
+  const loadMore = _visibleCount < patients.length
+    ? `<div style="padding:12px;text-align:center">
+        <button onclick="loadMorePatients()" class="btn btn-outline" style="width:100%;font-size:12px">
+          ⬇️ Load lebih (${patients.length - _visibleCount} lagi)
+        </button>
+       </div>`
+    : '';
+
+  list.innerHTML = html + loadMore;
+}
+
+function loadMorePatients() {
+  _visibleCount += 50;
+  renderVisiblePatients();
 }
 
 function filterPatients(v) { renderPatientList(v); }
