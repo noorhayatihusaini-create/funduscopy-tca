@@ -1,1281 +1,253 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Funduscopy TCA System — MOH Malaysia</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg:#f0f4f8;--surface:#fff;--surface2:#f7fafc;--border:#dde3ea;
-    --primary:#0b5394;--primary-light:#1a73c7;--primary-dim:#d9e8f7;
-    --accent:#e63946;--accent-dim:#fde8ea;--green:#1a7a4a;--green-dim:#d4eddf;
-    --orange:#c76a00;--orange-dim:#fdf0db;--purple:#5c2d91;--purple-dim:#ede5f7;
-    --text:#1a2433;--text2:#4a5568;--text3:#718096;
-    --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
-    --radius:8px;--shadow:0 2px 12px rgba(0,0,0,0.08);
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+// ============================================================
+// FUNDUSCOPY TCA SYSTEM — Google Apps Script (V5)
+// Dengan pagination untuk elak freeze
+// ============================================================
 
-  /* SETUP SCREEN */
-  .setup-screen{position:fixed;inset:0;background:var(--primary);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px}
-  .setup-box{background:#fff;border-radius:14px;padding:36px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
-  .setup-logo{font-size:40px;text-align:center;margin-bottom:10px}
-  .setup-title{font-size:20px;font-weight:700;text-align:center;color:var(--primary);margin-bottom:6px}
-  .setup-sub{font-size:13px;text-align:center;color:var(--text3);margin-bottom:24px}
-  .setup-label{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;display:block}
-  .setup-input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--mono);outline:none;margin-bottom:14px}
-  .setup-input:focus{border-color:var(--primary)}
-  .setup-hint{font-size:11px;color:var(--text3);margin-top:-10px;margin-bottom:14px;line-height:1.6}
-  .setup-hint code{background:#f0f4f8;padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:11px}
-  .setup-step{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;font-size:12px;line-height:1.8;color:var(--text2)}
-  .setup-step strong{color:var(--primary)}
-  .setup-step ol{padding-left:16px;margin-top:6px}
-  .btn-setup{width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans)}
-  .btn-setup:hover{background:var(--primary-light)}
-  .btn-setup:disabled{opacity:0.5;cursor:not-allowed}
+const SOURCE_SHEET  = "ACTIVE PT NDR ";
+const TARGET_SHEET  = "FUNDUSCOPY TCA";
 
-  /* SYNC BANNER */
-  .sync-bar{background:#fff;border-bottom:1px solid var(--border);padding:6px 20px;display:flex;align-items:center;gap:10px;font-size:12px}
-  .sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-  .sync-dot.ok{background:var(--green);animation:pulse 2s infinite}
-  .sync-dot.err{background:var(--accent)}
-  .sync-dot.syncing{background:var(--orange);animation:spin 1s linear infinite}
-  .sync-dot.offline{background:#a0aec0}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-  .sync-label{color:var(--text2)}
-  .sync-time{color:var(--text3);margin-left:auto}
-  .sync-actions{display:flex;gap:6px}
+const COL_NAME      = 1;
+const COL_IC        = 2;
+const COL_STATUS    = 3;
+const COL_REMARKS   = 11;
 
-  /* HEADER */
-  .header{background:var(--primary);color:#fff;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:52px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-  .header-left{display:flex;align-items:center;gap:10px}
-  .header-title{font-size:14px;font-weight:600}
-  .header-sub{font-size:11px;opacity:.75;font-family:var(--mono)}
-  .header-right{display:flex;gap:6px;align-items:center}
-  .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--radius);font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--sans)}
-  .btn-white{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)}
-  .btn-white:hover{background:rgba(255,255,255,.25)}
-  .btn-primary{background:var(--primary);color:#fff}
-  .btn-primary:hover{background:var(--primary-light)}
-  .btn-success{background:var(--green);color:#fff}
-  .btn-success:hover{filter:brightness(1.1)}
-  .btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--primary)}
-  .btn-outline:hover{background:var(--primary-dim)}
+const COLUMNS = [
+  "ID","Nama Pesakit","No. IC","No. Telefon","Jantina","Umur","MRN",
+  "Tarikh TCA","Masa","Klinik","Keputusan Fundus","Mata Diperiksa",
+  "VA OD","VA OS","BP","HbA1c","Tindakan / Outcome","Tarikh TCA Seterusnya",
+  "Doktor","Hospital Rujukan","Tarikh Rujukan","No. Rujukan",
+  "Sebab Enggan","Mata Buta","Sebab Buta","Nota","Status NDR","Timestamp"
+];
 
-  /* LAYOUT */
-  .layout{display:flex;height:calc(100vh - 52px - 33px - 42px);overflow:hidden}
-
-  /* SIDEBAR */
-  .sidebar{width:290px;min-width:250px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-  .sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-  .sidebar-title{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px}
-  .sidebar-search{padding:8px 12px;border-bottom:1px solid var(--border)}
-  .search-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--sans);background:var(--surface2);color:var(--text);outline:none}
-  .search-input:focus{border-color:var(--primary)}
-  .patient-list{flex:1;overflow-y:auto}
-  .patient-item{padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;display:flex;justify-content:space-between;align-items:flex-start}
-  .patient-item:hover{background:var(--primary-dim)}
-  .patient-item.active{background:var(--primary-dim);border-left:3px solid var(--primary)}
-  .patient-name{font-weight:600;font-size:13px}
-  .patient-ic{font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:2px}
-  .patient-status-dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0}
-  .dot-green{background:#1a7a4a}.dot-orange{background:#c76a00}.dot-red{background:#e63946}.dot-purple{background:#5c2d91}.dot-gray{background:#a0aec0}
-  .empty-list{padding:28px 14px;text-align:center;color:var(--text3);font-size:12px}
-
-  /* MAIN */
-  .main{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
-  .welcome-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:40px;text-align:center;color:var(--text3)}
-
-  /* CARD */
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
-  .card-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2)}
-  .card-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
-  .card-body{padding:16px}
-
-  /* PATIENT BAR */
-  .patient-bar{background:var(--primary);color:#fff;border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  .pname{font-size:15px;font-weight:600}
-  .pdetail{font-size:11px;opacity:.8;font-family:var(--mono)}
-  .pbar-right{margin-left:auto;display:flex;gap:6px}
-  .gs-badge{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-family:var(--mono)}
-
-  /* BADGE */
-  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-  .badge-green{background:var(--green-dim);color:var(--green)}.badge-orange{background:var(--orange-dim);color:var(--orange)}.badge-red{background:var(--accent-dim);color:var(--accent)}.badge-purple{background:var(--purple-dim);color:var(--purple)}.badge-gray{background:#edf2f7;color:#718096}.badge-blue{background:var(--primary-dim);color:var(--primary)}
-
-  /* FORM */
-  .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
-  .form-group{display:flex;flex-direction:column;gap:4px}
-  .form-group.full{grid-column:1/-1}
-  label{font-size:12px;font-weight:600;color:var(--text2)}
-  input[type="text"],input[type="date"],input[type="tel"],select,textarea{padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--sans);color:var(--text);background:#fff;outline:none;transition:border .15s;width:100%}
-  input:focus,select:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(11,83,148,.1)}
-  textarea{resize:vertical;min-height:64px}
-  .required{color:var(--accent);margin-left:2px}
-
-  /* RADIO */
-  .radio-group{display:flex;flex-wrap:wrap;gap:6px}
-  .radio-option{display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s;background:#fff}
-  .radio-option:hover{border-color:var(--primary);background:var(--primary-dim)}
-  .radio-option input{display:none}
-  .radio-option.selected{border-color:var(--primary);background:var(--primary-dim);color:var(--primary);font-weight:600}
-
-  /* FUNDUS */
-  .fundus-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}
-  .fundus-option{padding:9px 12px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:7px;background:#fff}
-  .fundus-option:hover{border-color:var(--primary);background:var(--primary-dim)}
-  .fundus-option.normal.selected{border-color:var(--green);background:var(--green-dim);color:var(--green)}
-  .fundus-option.mild.selected{border-color:#d4a017;background:#fef9e7;color:#856404}
-  .fundus-option.moderate.selected{border-color:var(--orange);background:var(--orange-dim);color:var(--orange)}
-  .fundus-option.severe.selected,.fundus-option.pdr.selected{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
-  .fundus-option.other.selected{border-color:var(--purple);background:var(--purple-dim);color:var(--purple)}
-
-  /* TCA */
-  .tca-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-  .tca-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:all .15s;background:#fff}
-  .tca-card:hover{border-color:var(--primary);transform:translateY(-1px)}
-  .tca-card.selected{border-color:var(--primary);background:var(--primary-dim)}
-  .tca-card.selected .tca-label{color:var(--primary)}
-  .tca-icon{font-size:18px;margin-bottom:5px}
-  .tca-label{font-size:12px;font-weight:700;color:var(--text2)}
-  .tca-desc{font-size:11px;color:var(--text3);margin-top:2px}
-  .tca-card.refer.selected{background:var(--accent-dim);border-color:var(--accent)}.tca-card.refer.selected .tca-label{color:var(--accent)}
-  .tca-card.hti-fu.selected{background:var(--purple-dim);border-color:var(--purple)}.tca-card.hti-fu.selected .tca-label{color:var(--purple)}
-  .tca-card.special.selected{background:var(--orange-dim);border-color:var(--orange)}.tca-card.special.selected .tca-label{color:var(--orange)}
-
-  /* TABLE */
-  .hist-table{width:100%;border-collapse:collapse;font-size:12px}
-  .hist-table th{background:var(--surface2);padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-  .hist-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
-  .hist-table tr:hover td{background:var(--surface2)}
-  .mono{font-family:var(--mono)}
-
-  /* ALERT */
-  .alert{padding:9px 12px;border-radius:6px;font-size:12px;display:flex;align-items:flex-start;gap:7px}
-  .alert-warning{background:var(--orange-dim);color:var(--orange);border:1px solid #f5c57a}
-  .alert-info{background:var(--primary-dim);color:var(--primary);border:1px solid #aaceed}
-  .alert-danger{background:var(--accent-dim);color:var(--accent);border:1px solid #f5a7ab}
-  .alert-success{background:var(--green-dim);color:var(--green);border:1px solid #a3d9b1}
-
-  /* MODAL */
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
-  .modal-overlay.open{display:flex}
-  .modal{background:var(--surface);border-radius:10px;width:100%;max-width:760px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column}
-  .modal-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);position:sticky;top:0;z-index:1}
-  .modal-title{font-size:14px;font-weight:700}
-  .modal-body{padding:18px;display:flex;flex-direction:column;gap:16px}
-  .modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--surface2);position:sticky;bottom:0}
-  .close-btn{background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3);padding:4px;line-height:1}
-  .close-btn:hover{color:var(--text)}
-  .section-divider{display:flex;align-items:center;gap:8px;margin:4px 0}
-  .section-divider span{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
-  .section-divider::before,.section-divider::after{content:'';flex:1;height:1px;background:var(--border)}
-
-  /* TOAST */
-  .toast-container{position:fixed;bottom:18px;right:18px;z-index:999;display:flex;flex-direction:column;gap:6px}
-  .toast{padding:10px 16px;border-radius:8px;font-size:12px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.15);animation:slideUp .25s ease;max-width:280px}
-  .toast-success{background:var(--green);color:#fff}
-  .toast-error{background:var(--accent);color:#fff}
-  .toast-info{background:var(--primary);color:#fff}
-  @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-
-  /* LOADING */
-  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-
-  .hidden{display:none}
-  .flex{display:flex}.gap-8{gap:8px}.items-center{align-items:center}
-  .text-sm{font-size:12px;color:var(--text3)}
-  ::-webkit-scrollbar{width:4px;height:4px}
-  ::-webkit-scrollbar-thumb{background:#c1cdd8;border-radius:10px}
-</style>
-</head>
-<body>
-
-<!-- ===== SETUP SCREEN ===== -->
-<div class="setup-screen" id="setupScreen">
-  <div class="setup-box">
-    <div class="setup-logo">👁️</div>
-    <div class="setup-title">Sambung ke Google Sheets</div>
-    <div class="setup-sub">Masukkan URL Web App Apps Script anda untuk menyambungkan sistem ini.</div>
-
-    <div class="setup-step">
-      <strong>Cara dapatkan URL Web App:</strong>
-      <ol>
-        <li>Buka Google Sheet anda → <strong>Extensions → Apps Script</strong></li>
-        <li>Paste kod dari fail <code>google_apps_script.js</code> yang disertakan</li>
-        <li>Klik <strong>Deploy → New deployment → Web App</strong></li>
-        <li>Execute as: <strong>Me</strong> · Who has access: <strong>Anyone</strong></li>
-        <li>Klik <strong>Deploy</strong> → salin URL yang terhasil ke sini</li>
-      </ol>
-    </div>
-
-    <label class="setup-label">URL Web App Apps Script <span style="color:red">*</span></label>
-    <input type="text" class="setup-input" id="scriptUrl" placeholder="https://script.google.com/macros/s/AKfyc.../exec">
-    <div class="setup-hint">URL bermula dengan <code>https://script.google.com/macros/s/</code> dan berakhir dengan <code>/exec</code></div>
-
-    <label class="setup-label">Nama Tab Sheet (default: Sheet1)</label>
-    <input type="text" class="setup-input" id="sheetName" placeholder="Sheet1" value="Sheet1">
-
-    <button class="btn-setup" id="connectBtn" onclick="connectSheet()">🔗 Sambung & Muat Data</button>
-    <div id="connectStatus" style="text-align:center;margin-top:10px;font-size:12px;color:var(--text3)"></div>
-  </div>
-</div>
-
-<!-- HEADER -->
-<div class="header" id="appHeader" style="display:none">
-  <div class="header-left">
-    <span style="font-size:20px">👁️</span>
-    <div>
-      <div class="header-title">Sistem Pemantauan Funduscopy</div>
-      <div class="header-sub">MOH Malaysia · Google Sheets Sync</div>
-    </div>
-  </div>
-  <div class="header-right">
-    <button class="btn btn-white" onclick="syncNow()">🔄 Sync</button>
-    <button class="btn btn-white" onclick="importFromNDR()" id="importBtn">📥 Import NDR</button>
-    <button class="btn btn-white" onclick="exportCSV()">📤 CSV</button>
-    <button class="btn btn-white" onclick="openStats()">📊 Statistik</button>
-    <button class="btn btn-white" onclick="openModal('addPatient')">+ Pesakit Baru</button>
-    <button class="btn btn-white" style="font-size:10px;opacity:.7" onclick="changeSheet()">⚙️</button>
-  </div>
-</div>
-
-<!-- SYNC BAR -->
-<div class="sync-bar" id="syncBar" style="display:none">
-  <div class="sync-dot offline" id="syncDot"></div>
-  <span class="sync-label" id="syncLabel">Menyambung...</span>
-  <span class="sync-time" id="syncTime"></span>
-</div>
-
-<!-- DASHBOARD STATS -->
-<div id="dashStats" style="display:none;background:#fff;border-bottom:1px solid var(--border);padding:8px 20px;display:none">
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <div onclick="filterBy('all')" id="fAll" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--primary);color:#fff">👥 Semua: <span id="dTotal">0</span></div>
-    <div onclick="filterBy('noFundus')" id="fNoFundus" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">⏳ Belum Fundus: <span id="dNoFundus">0</span></div>
-    <div onclick="filterBy('overdue')" id="fOverdue" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">⚠️ TCA Lepas: <span id="dOverdue">0</span></div>
-    <div onclick="filterBy('hti')" id="fHTI" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">🏥 Refer HTI: <span id="dHTI">0</span></div>
-    <div onclick="filterBy('htifu')" id="fHTIFU" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">🔭 HTI F/U: <span id="dHTIFU">0</span></div>
-  </div>
-</div>
-
-<!-- LAYOUT -->
-<div class="layout" id="appLayout" style="display:none">
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-title">Senarai Pesakit</span>
-      <span id="patientCount" class="badge badge-blue">0</span>
-    </div>
-    <div class="sidebar-search">
-      <input type="text" id="searchInput" class="search-input" placeholder="🔍  Cari nama / IC..." oninput="filterPatients(this.value)">
-    </div>
-    <div class="patient-list" id="patientList">
-      <div class="empty-list">Memuatkan data...</div>
-    </div>
-  </div>
-  <div class="main" id="mainContent">
-    <div class="welcome-card">
-      <div style="font-size:40px;margin-bottom:10px">👁️</div>
-      <div style="font-size:17px;font-weight:600;color:var(--text2);margin-bottom:6px">Sistem TCA Funduscopy</div>
-      <p class="text-sm">Pilih pesakit dari senarai atau tambah pesakit baru.</p>
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="openModal('addPatient')">+ Tambah Pesakit Baru</button>
-        <button class="btn btn-outline" onclick="importFromNDR()">📥 Import dari NDR</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- TOAST -->
-<div class="toast-container" id="toastContainer"></div>
-
-<!-- ===== MODAL: ADD/EDIT PATIENT ===== -->
-<div class="modal-overlay" id="modal-addPatient">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title" id="modalPatientTitle">➕ Tambah Pesakit Baru</span>
-      <button class="close-btn" onclick="closeModal('addPatient')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Nama Penuh <span class="required">*</span></label>
-          <input type="text" id="fName" placeholder="Contoh: Ahmad bin Ali">
-        </div>
-        <div class="form-group">
-          <label>No. Kad Pengenalan <span class="required">*</span></label>
-          <input type="text" id="fIC" placeholder="XXXXXX-XX-XXXX" maxlength="14" oninput="formatIC(this); autoCalcAge(this.value);">
-          <div id="icAgeInfo"></div>
-        </div>
-        <div class="form-group">
-          <label>No. Telefon</label>
-          <input type="tel" id="fPhone" placeholder="01X-XXXXXXXX">
-        </div>
-        <div class="form-group">
-          <label>Jantina</label>
-          <select id="fGender">
-            <option value="">-- Pilih --</option>
-            <option>Lelaki</option><option>Perempuan</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Umur <span style="font-size:10px;color:var(--green);font-weight:400">(auto dari IC)</span></label>
-          <input type="text" id="fAge" placeholder="Auto-kira dari IC..." readonly style="background:#f7fafc;color:var(--primary);font-weight:600;">
-        </div>
-        <div class="form-group">
-          <label>No. Rekod / MRN</label>
-          <input type="text" id="fMRN" placeholder="Pilihan">
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('addPatient')">Batal</button>
-      <button class="btn btn-success" id="savePatientBtn" onclick="savePatient()">💾 Simpan ke Sheet</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL: ADD VISIT ===== -->
-<div class="modal-overlay" id="modal-addVisit">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">📋 Rekod Lawatan Funduscopy</span>
-      <button class="close-btn" onclick="closeModal('addVisit')">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="alert alert-info" style="font-size:12px">🗓️ <strong>Peringatan:</strong> Peperiksaan fundus hanya dijalankan <strong>Isnin, Selasa, Rabu & Khamis</strong> sahaja. Tarikh TCA akan dikira &amp; dialihkan secara automatik ke hari yang sah.</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Tarikh Datang TCA <span class="required">*</span></label>
-          <input type="date" id="vDate" onchange="onVisitDateChange()">
-          <div id="visitDateWarn"></div>
-        </div>
-        <div class="form-group">
-          <label>Masa</label>
-          <input type="text" id="vTime" placeholder="Contoh: 9:30 pagi">
-        </div>
-        <div class="form-group">
-          <label>Nama Klinik / Fasiliti</label>
-          <input type="text" id="vClinic" placeholder="Klinik Kesihatan...">
-        </div>
-      </div>
-
-      <div class="section-divider"><span>Keputusan Fundus</span></div>
-      <div class="form-group">
-        <label>Keputusan Funduscopy <span class="required">*</span></label>
-        <div class="fundus-options" id="fundusOptions">
-          <div class="fundus-option normal" onclick="selectFundus(this,'Normal / Tiada DR')">👁️ Normal / Tiada DR</div>
-          <div class="fundus-option mild" onclick="selectFundus(this,'NPDR Ringan (Mild)')">🟡 NPDR Ringan (Mild)</div>
-          <div class="fundus-option moderate" onclick="selectFundus(this,'NPDR Sederhana (Moderate)')">🟠 NPDR Sederhana</div>
-          <div class="fundus-option severe" onclick="selectFundus(this,'NPDR Teruk (Severe)')">🔴 NPDR Teruk (Severe)</div>
-          <div class="fundus-option pdr" onclick="selectFundus(this,'PDR (Proliferative DR)')">🔴🔴 PDR</div>
-          <div class="fundus-option other" onclick="selectFundus(this,'DME')">💧 DME</div>
-          <div class="fundus-option other" onclick="selectFundus(this,'Glaukoma / Suspect')">🟣 Glaukoma</div>
-          <div class="fundus-option other" onclick="selectFundus(this,'Katarak / Media Opacity')">☁️ Katarak</div>
-          <div class="fundus-option other" onclick="selectFundus(this,'AMD')">🔵 AMD</div>
-          <div class="fundus-option other" onclick="selectFundus(this,'Lain-lain')">✏️ Lain-lain</div>
-        </div>
-        <input type="text" id="vFundusResult" placeholder="Catatan tambahan..." style="margin-top:8px">
-      </div>
-
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Mata Diperiksa</label>
-          <div class="radio-group">
-            <label class="radio-option" onclick="selectRadio(this)"><input type="radio" name="eyeSide" value="OD (Kanan)"> OD (Kanan)</label>
-            <label class="radio-option" onclick="selectRadio(this)"><input type="radio" name="eyeSide" value="OS (Kiri)"> OS (Kiri)</label>
-            <label class="radio-option selected" onclick="selectRadio(this)"><input type="radio" name="eyeSide" value="OU (Kedua-dua)" checked> OU (Kedua-dua)</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <div class="form-group"><label>VA OD</label><input type="text" id="vVaOD" placeholder="6/6"></div>
-        <div class="form-group"><label>VA OS</label><input type="text" id="vVaOS" placeholder="6/12"></div>
-        <div class="form-group"><label>BP (mmHg)</label><input type="text" id="vBP" placeholder="130/80"></div>
-        <div class="form-group"><label>HbA1c</label><input type="text" id="vHbA1c" placeholder="8.2%"></div>
-      </div>
-
-      <div class="section-divider"><span>Tindakan TCA</span></div>
-      <div class="form-group">
-        <label>Tindakan / TCA Seterusnya <span class="required">*</span></label>
-        <div class="tca-options">
-          <div class="tca-card" onclick="selectTCA(this,'3 Bulan')"><div class="tca-icon">📅</div><div class="tca-label">TCA 3 Bulan</div><div class="tca-desc">Semak semula 3 bulan</div></div>
-          <div class="tca-card" onclick="selectTCA(this,'6 Bulan')"><div class="tca-icon">📅</div><div class="tca-label">TCA 6 Bulan</div><div class="tca-desc">Semak semula 6 bulan</div></div>
-          <div class="tca-card" onclick="selectTCA(this,'1 Tahun')"><div class="tca-icon">📅</div><div class="tca-label">TCA 1 Tahun</div><div class="tca-desc">Semak semula 1 tahun</div></div>
-          <div class="tca-card refer" onclick="selectTCA(this,'Rujukan Eye HTI')"><div class="tca-icon">🏥</div><div class="tca-label">Rujukan Eye HTI</div><div class="tca-desc">Rujuk pakar mata HTI</div></div>
-          <div class="tca-card hti-fu" onclick="selectTCA(this,'Eye Under HTI Follow-Up')"><div class="tca-icon">🔭</div><div class="tca-label">Eye Under HTI F/U</div><div class="tca-desc">Di bawah jagaan HTI</div></div>
-          <div class="tca-card hti-fu" onclick="selectTCA(this,'Eye Under GP Follow-Up')"><div class="tca-icon">👨‍⚕️</div><div class="tca-label">Eye Under GP F/U</div><div class="tca-desc">Di bawah jagaan GP</div></div>
-          <div class="tca-card special" onclick="selectTCA(this,'Pesakit Buta')"><div class="tca-icon">🚫</div><div class="tca-label">Pesakit Buta</div><div class="tca-desc">Penglihatan hilang</div></div>
-          <div class="tca-card special" onclick="selectTCA(this,'Pesakit Enggan Rawatan')"><div class="tca-icon">🙅</div><div class="tca-label">Enggan Rawatan</div><div class="tca-desc">Menolak rawatan</div></div>
-          <div class="tca-card special" onclick="selectTCA(this,'Lain-lain')"><div class="tca-icon">📝</div><div class="tca-label">Lain-lain</div><div class="tca-desc">Nyatakan dalam nota</div></div>
-        </div>
-        <input type="hidden" id="vTCAOutcome">
-      </div>
-
-      <div id="htiSection" class="hidden">
-        <div class="alert alert-danger" style="margin-bottom:10px">⚠️ Lengkapkan maklumat rujukan HTI</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Tarikh Surat Rujukan</label><input type="date" id="vReferDate"></div>
-          <div class="form-group"><label>No. Rujukan</label><input type="text" id="vReferNo"></div>
-          <div class="form-group"><label>HTI / Hospital Dirujuk</label><input type="text" id="vReferHosp" placeholder="Hospital KL..."></div>
-        </div>
-      </div>
-      <div id="refuseSection" class="hidden">
-        <div class="alert alert-warning" style="margin-bottom:10px">📝 Nyatakan sebab enggan rawatan</div>
-        <div class="form-group"><label>Sebab Enggan</label><textarea id="vRefuseReason" placeholder="Contoh: Takut prosedur, tiada pengangkutan..."></textarea></div>
-      </div>
-      <div id="blindSection" class="hidden">
-        <div class="alert alert-danger" style="margin-bottom:10px">ℹ️ Rekod maklumat kebutaan</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Mata Terlibat</label><input type="text" id="vBlindEye" placeholder="OD / OS / OU"></div>
-          <div class="form-group"><label>Sebab Kebutaan</label><input type="text" id="vBlindCause" placeholder="PDR, Glaukoma..."></div>
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <div class="form-group"><label>Tarikh TCA Seterusnya</label>
-          <input type="date" id="vNextTCA" oninput="showManualDateInfo(this.value)">
-          <div id="tcaDateInfo"></div>
-        </div>
-        <div class="form-group"><label>Doktor / Paramedik</label><input type="text" id="vDoctor"></div>
-      </div>
-      <div class="form-group"><label>Nota Tambahan</label><textarea id="vNotes"></textarea></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('addVisit')">Batal</button>
-      <button class="btn btn-success" id="saveVisitBtn" onclick="saveVisit()">💾 Simpan ke Sheet</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL: STATS ===== -->
-<div class="modal-overlay" id="modal-stats">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header"><span class="modal-title">📊 Statistik</span><button class="close-btn" onclick="closeModal('stats')">✕</button></div>
-    <div class="modal-body" id="statsBody"></div>
-    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal('stats')">Tutup</button></div>
-  </div>
-</div>
-
-<script>
-// ══════════════════════════════════════════════
-// CONFIG
-// ══════════════════════════════════════════════
-let SCRIPT_URL = localStorage.getItem('fundus_script_url') || '';
-let rows = [];            // flat rows from sheet — each row = one visit record
-let selectedIC = null;    // current patient IC
-let editingRowId = null;
-let syncInterval = null;
-let lastSync = null;
-
-// ══════════════════════════════════════════════
-// SETUP
-// ══════════════════════════════════════════════
-window.onload = () => {
-  if (SCRIPT_URL) {
-    document.getElementById('scriptUrl').value = SCRIPT_URL;
-    showApp();
-    loadFromSheet();
-    startAutoSync();
-  }
-};
-
-function connectSheet() {
-  const url = document.getElementById('scriptUrl').value.trim();
-  if (!url.includes('script.google.com')) { alert('URL tidak sah. Sila masukkan URL Apps Script yang betul.'); return; }
-  SCRIPT_URL = url;
-  localStorage.setItem('fundus_script_url', url);
-  const btn = document.getElementById('connectBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Menyambung...';
-  document.getElementById('connectStatus').textContent = 'Menguji sambungan...';
-  loadFromSheet(true);
+function getSourceSheet() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SOURCE_SHEET);
 }
 
-function showApp() {
-  document.getElementById('setupScreen').style.display = 'none';
-  document.getElementById('appHeader').style.display = 'flex';
-  document.getElementById('syncBar').style.display = 'flex';
-  document.getElementById('appLayout').style.display = 'flex';
-  document.getElementById('dashStats').style.display = 'flex';
+function getTargetSheet() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TARGET_SHEET);
 }
 
-function changeSheet() {
-  if (confirm('Tukar URL Apps Script? Semua data akan dimuatkan semula dari sheet baru.')) {
-    localStorage.removeItem('fundus_script_url');
-    location.reload();
+function ensureHeaders() {
+  const sheet = getTargetSheet();
+  if (!sheet) return;
+  const firstRow = sheet.getRange(1, 1, 1, COLUMNS.length).getValues()[0];
+  if (firstRow.every(c => c === "")) {
+    sheet.getRange(1, 1, 1, COLUMNS.length).setValues([COLUMNS]);
+    sheet.getRange(1, 1, 1, COLUMNS.length)
+      .setBackground("#0b5394").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.setFrozenRows(1);
   }
 }
 
-// ══════════════════════════════════════════════
-// SYNC
-// ══════════════════════════════════════════════
-function setSyncStatus(state, msg) {
-  const dot = document.getElementById('syncDot');
-  const lbl = document.getElementById('syncLabel');
-  dot.className = 'sync-dot ' + state;
-  lbl.textContent = msg;
+function makeResponse(data) {
+  const output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
 }
 
-function startAutoSync() {
-  if (syncInterval) clearInterval(syncInterval);
-  syncInterval = setInterval(() => loadFromSheet(), 60000); // every 60s
+function mapRemarksToOutcome(remarks) {
+  if (!remarks) return "";
+  const r = remarks.toString().toUpperCase().trim();
+  if (r.includes("REFER HTI") || r.includes("REFER EYE")) return "Rujukan Eye HTI";
+  if (r.includes("HTI F/UP") || r.includes("HTI FU") || r.includes("UNDER HTI") || r.includes("HTI FOLLOW")) return "Eye Under HTI Follow-Up";
+  if (r.includes("GP F/UP") || r.includes("UNDER GP")) return "Eye Under GP Follow-Up";
+  if (r.includes("BLIND") || r.includes("BUTA")) return "Pesakit Buta";
+  return "";
 }
 
-async function loadFromSheet(fromSetup=false) {
-  setSyncStatus('syncing', 'Menyegerakkan dengan Google Sheets...');
-  try {
-    const res = await fetch(SCRIPT_URL, { method:'GET', mode:'cors' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    rows = data.rows || [];
-    _patientsCache = null; // clear cache
-    lastSync = new Date();
-    document.getElementById('syncTime').textContent = 'Dikemaskini: ' + lastSync.toLocaleTimeString('ms-MY');
-    setSyncStatus('ok', 'Bersambung ke Google Sheets (' + rows.length + ' rekod)');
-    renderPatientList();
-    updateDashStats();
-
-    if (fromSetup) {
-      showApp();
-      startAutoSync();
-      toast('Berjaya disambungkan ke Google Sheets! (' + rows.length + ' rekod dimuatkan)', 'success');
-      const btn = document.getElementById('connectBtn');
-      if (btn) { btn.disabled = false; btn.textContent = '🔗 Sambung & Muat Data'; }
-    }
-  } catch(e) {
-    setSyncStatus('err', 'Ralat sambungan: ' + e.message);
-    if (fromSetup) {
-      toast('Gagal sambung: ' + e.message, 'error');
-      const btn = document.getElementById('connectBtn');
-      if (btn) { btn.disabled = false; btn.textContent = '🔗 Sambung & Muat Data'; }
-      document.getElementById('connectStatus').textContent = '❌ ' + e.message;
-    } else {
-      toast('Auto-sync gagal. Periksa sambungan internet.', 'error');
-    }
-  }
-}
-
-async function syncNow() { await loadFromSheet(); }
-
-async function pushRow(action, rowData, id=null) {
-  const payload = { action };
-  if (action === 'insert') payload.row = rowData;
-  if (action === 'update') { payload.id = id; payload.row = rowData; }
-  if (action === 'delete') payload.id = id;
-
-  const res = await fetch(SCRIPT_URL, {
-    method: 'POST', mode: 'cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  return await res.json();
-}
-
-// ══════════════════════════════════════════════
-// DATA HELPERS
-// ══════════════════════════════════════════════
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
-function formatIC(input) {
-  let v = input.value.replace(/\D/g,'');
-  if (v.length > 6) v = v.slice(0,6)+'-'+v.slice(6);
-  if (v.length > 9) v = v.slice(0,9)+'-'+v.slice(9);
-  input.value = v.slice(0,14);
-}
-
-function autoCalcAge(icVal) {
-  const infoEl = document.getElementById('icAgeInfo');
-  const ageEl  = document.getElementById('fAge');
-  const genderEl = document.getElementById('fGender');
-  if (!infoEl || !ageEl) return;
-
-  // Remove dashes for processing
-  const ic = icVal.replace(/-/g,'');
-  if (ic.length < 6) { infoEl.innerHTML=''; ageEl.value=''; return; }
-
-  const yy = parseInt(ic.slice(0,2));
-  const mm = parseInt(ic.slice(2,4));
-  const dd = parseInt(ic.slice(4,6));
-
-  // Determine century — if yy > current 2-digit year, it's 1900s
-  const currentYY = new Date().getFullYear() % 100;
-  const fullYear = yy > currentYY ? 1900 + yy : 2000 + yy;
-
-  // Validate month and day
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) { infoEl.innerHTML=''; ageEl.value=''; return; }
-
-  const dob = new Date(fullYear, mm-1, dd);
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const monthDiff = today.getMonth() - dob.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
-
-  if (age < 0 || age > 120) { infoEl.innerHTML=''; ageEl.value=''; return; }
-
-  // Auto-fill age
-  ageEl.value = age;
-
-  // Auto-detect gender from IC (last digit: odd=male, even=female)
-  if (ic.length >= 12 && genderEl && !genderEl.value) {
-    const lastDigit = parseInt(ic.slice(11,12));
-    if (!isNaN(lastDigit)) genderEl.value = lastDigit % 2 === 1 ? 'Lelaki' : 'Perempuan';
-  }
-
-  // Format DOB nicely
-  const dobStr = dob.toLocaleDateString('ms-MY', { day:'2-digit', month:'long', year:'numeric' });
-  infoEl.innerHTML = `<div style="margin-top:4px;padding:5px 10px;background:var(--green-dim);border-radius:6px;font-size:11px;color:var(--green);font-weight:600;">
-    🎂 Tarikh Lahir: ${dobStr} &nbsp;|&nbsp; Umur: <strong>${age} tahun</strong>
-  </div>`;
-}
-
-// Get unique patients from rows (cached)
-let _patientsCache = null;
-function getPatients() {
-  if (_patientsCache) return _patientsCache;
-  const map = {};
-  rows.forEach(r => {
-    const ic = r['No. IC'];
-    if (!ic) return;
-    if (!map[ic]) map[ic] = { name: r['Nama Pesakit'], ic, phone: r['No. Telefon']||'', gender: r['Jantina']||'', age: r['Umur']||'', mrn: r['MRN']||'' };
-  });
-  _patientsCache = Object.values(map);
-  return _patientsCache;
-}
-
-function getVisitsForIC(ic) {
-  return rows.filter(r => r['No. IC'] === ic).sort((a,b) => new Date(b['Tarikh TCA']) - new Date(a['Tarikh TCA']));
-}
-
-function formatDate(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt)) return d;
-  return dt.toLocaleDateString('ms-MY', { day:'2-digit', month:'short', year:'numeric' });
-}
-
-// ══════════════════════════════════════════════
-// RENDER
-// ══════════════════════════════════════════════
-// ── Paginated patient list to prevent freeze ──
-let _allPatients = [];
-let _visibleCount = 50;
-
-function renderPatientList(filter='') {
-  const list = document.getElementById('patientList');
-  let patients = getPatients();
-  const fl = filter.toLowerCase();
-  if (fl) patients = patients.filter(p => p.name.toLowerCase().includes(fl) || p.ic.includes(fl));
-  patients = getFilteredPatients(patients, currentFilter);
-  document.getElementById('patientCount').textContent = patients.length;
-  _allPatients = patients;
-  _visibleCount = 50;
-  renderVisiblePatients();
-}
-
-function renderVisiblePatients() {
-  const list = document.getElementById('patientList');
-  const patients = _allPatients;
-
-  if (patients.length === 0) {
-    list.innerHTML = '<div class="empty-list">' + (rows.length === 0 ? 'Tiada rekod dalam sheet.<br>Tambah pesakit baru.' : 'Tiada rekod dijumpai.') + '</div>';
-    return;
-  }
-
-  const visible = patients.slice(0, _visibleCount);
-  const html = visible.map(p => {
-    const visits = getVisitsForIC(p.ic);
-    const last = visits[0];
-    const dot = getStatusDot(last);
-    const active = selectedIC === p.ic ? ' active' : '';
-    return `<div class="patient-item${active}" onclick="selectPatient('${p.ic}')">
-      <div>
-        <div class="patient-name">${p.name}</div>
-        <div class="patient-ic">${p.ic}${p.age?' · '+p.age+' thn':''}</div>
-        ${last ? `<div class="patient-ic" style="margin-top:2px">TCA: ${formatDate(last['Tarikh TCA Seterusnya']||last['Tarikh TCA'])}</div>` : ''}
-      </div>
-      <div class="patient-status-dot ${dot}"></div>
-    </div>`;
-  }).join('');
-
-  // Add load more button if needed
-  const loadMore = _visibleCount < patients.length
-    ? `<div style="padding:12px;text-align:center">
-        <button onclick="loadMorePatients()" class="btn btn-outline" style="width:100%;font-size:12px">
-          ⬇️ Load lebih (${patients.length - _visibleCount} lagi)
-        </button>
-       </div>`
-    : '';
-
-  list.innerHTML = html + loadMore;
-}
-
-function loadMorePatients() {
-  _visibleCount += 50;
-  renderVisiblePatients();
-}
-
-function filterPatients(v) { renderPatientList(v); }
-
-function getStatusDot(visit) {
-  if (!visit) return 'dot-gray';
-  const o = visit['Tindakan / Outcome'] || '';
-  if (o.includes('HTI') && o.includes('Rujuk')) return 'dot-red';
-  if (o.includes('Buta') || o.includes('Enggan')) return 'dot-orange';
-  if (o.includes('Follow') || o.includes('GP')) return 'dot-purple';
-  if (o.includes('Bulan') || o.includes('Tahun')) return 'dot-green';
-  return 'dot-gray';
-}
-
-function selectPatient(ic) {
-  selectedIC = ic;
-  renderPatientList(document.querySelector('.search-input')?.value||'');
-  renderMainContent(ic);
-}
-
-function renderMainContent(ic) {
-  const visits = getVisitsForIC(ic);
-  const patients = getPatients();
-  const p = patients.find(x=>x.ic===ic);
-  if (!p) return;
-  const last = visits[0];
-  const mc = document.getElementById('mainContent');
-  mc.innerHTML = '';
-
-  // Patient bar
-  const bar = document.createElement('div');
-  bar.className = 'patient-bar';
-  bar.innerHTML = `
-    <div>
-      <div class="pname">👤 ${p.name}</div>
-      <div class="pdetail">IC: ${p.ic}${p.phone?' | 📞 '+p.phone:''}${p.gender?' | '+p.gender:''}${p.age?' | '+p.age+' thn':''}${p.mrn?' | MRN: '+p.mrn:''}</div>
-    </div>
-    <div class="pbar-right">
-      <span class="gs-badge">📊 ${visits.length} lawatan</span>
-      <button class="btn btn-white" onclick="openAddVisit('${ic}')">+ Rekod Lawatan</button>
-    </div>`;
-  mc.appendChild(bar);
-
-  // TCA alert
-  if (last && last['Tarikh TCA Seterusnya']) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const next = new Date(last['Tarikh TCA Seterusnya']);
-    const diff = Math.round((next-today)/(1000*60*60*24));
-    const alertEl = document.createElement('div');
-    if (diff < 0) { alertEl.className='alert alert-danger'; alertEl.innerHTML=`⚠️ TCA telah LEPAS ${Math.abs(diff)} hari lalu — ${formatDate(last['Tarikh TCA Seterusnya'])}`; }
-    else if (diff<=14) { alertEl.className='alert alert-warning'; alertEl.innerHTML=`🔔 TCA seterusnya dalam ${diff} hari — ${formatDate(last['Tarikh TCA Seterusnya'])}`; }
-    else { alertEl.className='alert alert-success'; alertEl.innerHTML=`✅ TCA seterusnya: ${formatDate(last['Tarikh TCA Seterusnya'])} (${diff} hari lagi)`; }
-    mc.appendChild(alertEl);
-  }
-
-  // Current status
-  if (last) {
-    const sc = document.createElement('div');
-    sc.className = 'card';
-    sc.innerHTML = `
-      <div class="card-header">
-        <span class="card-title">📋 Status Terkini</span>
-        <span class="badge ${getBadgeClass(last['Tindakan / Outcome'])}">${last['Tindakan / Outcome']||'—'}</span>
-      </div>
-      <div class="card-body">
-        <div class="form-grid">
-          <div><div class="text-sm" style="margin-bottom:4px">Tarikh Lawatan</div><strong>${formatDate(last['Tarikh TCA'])}</strong></div>
-          <div><div class="text-sm" style="margin-bottom:4px">Keputusan Fundus</div><strong>${last['Keputusan Fundus']||'—'}</strong></div>
-          <div><div class="text-sm" style="margin-bottom:4px">VA OD / OS</div><strong>${last['VA OD']||'—'} / ${last['VA OS']||'—'}</strong></div>
-          <div><div class="text-sm" style="margin-bottom:4px">BP / HbA1c</div><strong>${last['BP']||'—'} / ${last['HbA1c']||'—'}</strong></div>
-          ${last['Doktor']?`<div><div class="text-sm" style="margin-bottom:4px">Doktor</div><strong>${last['Doktor']}</strong></div>`:''}
-          ${last['Klinik']?`<div><div class="text-sm" style="margin-bottom:4px">Klinik</div><strong>${last['Klinik']}</strong></div>`:''}
-        </div>
-        ${last['Nota']?`<div class="alert alert-info" style="margin-top:10px">📝 ${last['Nota']}</div>`:''}
-        ${last['Tindakan / Outcome']==='Rujukan Eye HTI'&&last['Hospital Rujukan']?`<div class="alert alert-danger" style="margin-top:8px">🏥 Dirujuk: ${last['Hospital Rujukan']}${last['Tarikh Rujukan']?' ('+formatDate(last['Tarikh Rujukan'])+')':''}</div>`:''}
-        ${last['Tindakan / Outcome']==='Pesakit Enggan Rawatan'&&last['Sebab Enggan']?`<div class="alert alert-warning" style="margin-top:8px">🙅 Sebab: ${last['Sebab Enggan']}</div>`:''}
-        ${last['Tindakan / Outcome']==='Pesakit Buta'&&last['Sebab Buta']?`<div class="alert alert-danger" style="margin-top:8px">🚫 Buta ${last['Mata Buta']||''}: ${last['Sebab Buta']}</div>`:''}
-      </div>`;
-    mc.appendChild(sc);
-  }
-
-  // History table
-  const hc = document.createElement('div');
-  hc.className = 'card';
-  hc.innerHTML = `
-    <div class="card-header"><span class="card-title">📜 Sejarah Lawatan (${visits.length})</span></div>
-    <div style="overflow-x:auto">
-      ${visits.length===0
-        ? '<div class="card-body" style="color:var(--text3);text-align:center">Tiada rekod lawatan.</div>'
-        : `<table class="hist-table"><thead><tr>
-            <th>#</th><th>Tarikh</th><th>Keputusan Fundus</th><th>VA OD/OS</th><th>Tindakan TCA</th><th>TCA Seterusnya</th><th>Doktor</th><th></th>
-          </tr></thead><tbody>${visits.map((v,i)=>`<tr>
-            <td class="mono" style="color:var(--text3)">${visits.length-i}</td>
-            <td class="mono">${formatDate(v['Tarikh TCA'])}</td>
-            <td><span class="badge ${getFundusBadge(v['Keputusan Fundus'])}">${v['Keputusan Fundus']||'—'}</span></td>
-            <td class="mono">${v['VA OD']||'?'} / ${v['VA OS']||'?'}</td>
-            <td><span class="badge ${getBadgeClass(v['Tindakan / Outcome'])}">${v['Tindakan / Outcome']||'—'}</span></td>
-            <td class="mono">${formatDate(v['Tarikh TCA Seterusnya'])}</td>
-            <td>${v['Doktor']||'—'}</td>
-            <td><button class="btn btn-outline" style="padding:4px 8px;font-size:11px;color:var(--accent);border-color:var(--accent)" onclick="deleteVisit('${v['ID']}','${ic}')">🗑️</button></td>
-          </tr>`).join('')}</tbody></table>`}
-    </div>`;
-  mc.appendChild(hc);
-}
-
-function getBadgeClass(o) {
-  if(!o) return 'badge-gray';
-  if(o.includes('Rujukan')) return 'badge-red';
-  if(o.includes('Buta')||o.includes('Enggan')) return 'badge-orange';
-  if(o.includes('Follow')||o.includes('GP')) return 'badge-purple';
-  if(o.includes('Bulan')||o.includes('Tahun')) return 'badge-green';
-  return 'badge-gray';
-}
-function getFundusBadge(r) {
-  if(!r) return 'badge-gray';
-  if(r.includes('Normal')) return 'badge-green';
-  if(r.includes('PDR')||r.includes('Teruk')||r.includes('DME')) return 'badge-red';
-  if(r.includes('Sederhana')||r.includes('Ringan')) return 'badge-orange';
-  return 'badge-blue';
-}
-
-// ══════════════════════════════════════════════
-// SMART TCA DATE SCHEDULER (Isnin–Khamis only)
-// ══════════════════════════════════════════════
 function nearestFundusDay(date) {
   const d = new Date(date);
-  d.setHours(0,0,0,0);
-  const day = d.getDay(); // 0=Sun,1=Mon..6=Sat
-  if (day === 0) d.setDate(d.getDate()+1);  // Sun → Mon
-  else if (day === 5) d.setDate(d.getDate()-1); // Fri → Thu
-  else if (day === 6) d.setDate(d.getDate()-2); // Sat → Thu
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() + 1);
+  else if (day === 5) d.setDate(d.getDate() - 1);
+  else if (day === 6) d.setDate(d.getDate() - 2);
   return d;
 }
 
-function calcNextTCA(fromDateStr, outcome) {
-  const base = fromDateStr ? new Date(fromDateStr) : new Date();
-  base.setHours(0,0,0,0);
-  let target = null;
-  if (outcome === '3 Bulan') { target = new Date(base); target.setMonth(target.getMonth()+3); }
-  else if (outcome === '6 Bulan') { target = new Date(base); target.setMonth(target.getMonth()+6); }
-  else if (outcome === '1 Tahun') { target = new Date(base); target.setFullYear(target.getFullYear()+1); }
-  if (!target) return null;
-  return nearestFundusDay(target);
-}
-
-function toDateInputVal(d) {
-  if (!d) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${dd}`;
-}
-
-function dayName(d) {
-  return ['Ahad','Isnin','Selasa','Rabu','Khamis','Jumaat','Sabtu'][new Date(d).getDay()];
-}
-
-const NO_DATE_OUTCOMES = ['Rujukan Eye HTI','Pesakit Buta','Pesakit Enggan Rawatan','Eye Under HTI Follow-Up','Eye Under GP Follow-Up','Lain-lain'];
-
-function applySmartTCADate(outcome) {
-  const visitDate = document.getElementById('vDate').value;
-  const nextEl = document.getElementById('vNextTCA');
-  const infoEl = document.getElementById('tcaDateInfo');
-
-  if (NO_DATE_OUTCOMES.includes(outcome)) {
-    nextEl.value = '';
-    if (infoEl) infoEl.innerHTML = `<div class="alert alert-info" style="margin-top:6px">ℹ️ Tiada tarikh TCA untuk tindakan ini.</div>`;
-    return;
-  }
-  const next = calcNextTCA(visitDate, outcome);
-  if (!next) { if(infoEl) infoEl.innerHTML=''; return; }
-
-  const raw = new Date(visitDate||new Date());
-  raw.setHours(0,0,0,0);
-  if (outcome==='3 Bulan') raw.setMonth(raw.getMonth()+3);
-  else if (outcome==='6 Bulan') raw.setMonth(raw.getMonth()+6);
-  else if (outcome==='1 Tahun') raw.setFullYear(raw.getFullYear()+1);
-  const wasAdjusted = toDateInputVal(raw) !== toDateInputVal(next);
-
-  nextEl.value = toDateInputVal(next);
-  if (infoEl) infoEl.innerHTML = `<div class="alert alert-success" style="margin-top:6px">
-    📅 TCA: <strong>${dayName(next)}, ${formatDate(toDateInputVal(next))}</strong>
-    ${wasAdjusted ? `<br><span style="font-size:11px;opacity:.85">⚙️ Dijangka ${dayName(raw)} — dialihkan ke hari peperiksaan sah (Isnin–Khamis)</span>` : ''}
-  </div>`;
-}
-
-// Re-calc when visit date changes
-function onVisitDateChange() {
-  const d = new Date(document.getElementById('vDate').value);
-  const warnEl = document.getElementById('visitDateWarn');
-  const day = d.getDay();
-  if (warnEl) {
-    if (day===5||day===6||day===0) {
-      warnEl.innerHTML=`<div class="alert alert-warning" style="margin-top:4px">⚠️ ${dayName(d)} bukan hari peperiksaan fundus (Isnin–Khamis sahaja).</div>`;
-    } else {
-      warnEl.innerHTML=`<div class="alert alert-success" style="margin-top:4px">✅ ${dayName(d)} — hari peperiksaan sah.</div>`;
-    }
-  }
-  const currentOutcome = document.getElementById('vTCAOutcome').value;
-  if (currentOutcome && !NO_DATE_OUTCOMES.includes(currentOutcome)) applySmartTCADate(currentOutcome);
-}
-// ══════════════════════════════════════════════
-// IMPORT FROM NDR
-// ══════════════════════════════════════════════
-async function importFromNDR() {
-  if (!confirm('Import pesakit baru dari ACTIVE PT NDR?\n\nPesakit yang sudah ada dalam sistem akan dilangkau (tiada duplikat).')) return;
-  const btn = document.getElementById('importBtn');
-  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Importing...'; }
-  setSyncStatus('syncing','Mengimport pesakit dari ACTIVE PT NDR...');
-  try {
-    const res = await fetch(SCRIPT_URL + '?action=import', { method:'GET', mode:'cors' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    toast(`✅ ${data.message}`, 'success');
-    await loadFromSheet();
-    renderPatientList();
-    updateDashStats();
-  } catch(e) {
-    toast('Gagal import: '+e.message, 'error');
-    setSyncStatus('err','Ralat import');
-  } finally {
-    if (btn) { btn.disabled=false; btn.innerHTML='📥 Import NDR'; }
-  }
-}
-
-// ══════════════════════════════════════════════
-// DASHBOARD STATS & FILTER
-// ══════════════════════════════════════════════
-let currentFilter = 'all';
-
-function updateDashStats() {
-  const dash = document.getElementById('dashStats');
-  if (dash) dash.style.display = 'flex';
-
-  const patients = getPatients();
-  const today = new Date(); today.setHours(0,0,0,0);
-
-  let noFundus=0, overdue=0, hti=0, htifu=0;
-  patients.forEach(p => {
-    const visits = getVisitsForIC(p.ic).filter(v=>v['Keputusan Fundus']&&v['Keputusan Fundus']!=='Pendaftaran Baru'&&v['Keputusan Fundus']!=='');
-    const last = getVisitsForIC(p.ic)[0];
-    const outcome = last ? last['Tindakan / Outcome'] : '';
-    const nota = last ? last['Nota'] : '';
-
-    // Belum buat fundus — tiada keputusan fundus langsung
-    if (visits.length === 0) noFundus++;
-
-    // TCA dah lepas
-    if (last && last['Tarikh TCA Seterusnya']) {
-      const next = new Date(last['Tarikh TCA Seterusnya']);
-      if (next < today) overdue++;
-    }
-
-    // Refer HTI
-    if (outcome.includes('Rujukan Eye HTI') || nota.toUpperCase().includes('REFER HTI')) hti++;
-
-    // HTI Follow Up
-    if (outcome.includes('HTI Follow') || nota.toUpperCase().includes('HTI F/UP') || nota.toUpperCase().includes('HTI FOLLOW')) htifu++;
-  });
-
-  document.getElementById('dTotal').textContent = patients.length;
-  document.getElementById('dNoFundus').textContent = noFundus;
-  document.getElementById('dOverdue').textContent = overdue;
-  document.getElementById('dHTI').textContent = hti;
-  document.getElementById('dHTIFU').textContent = htifu;
-}
-
-function filterBy(type) {
-  currentFilter = type;
-  // Update active button style
-  ['fAll','fNoFundus','fOverdue','fHTI','fHTIFU'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.background = 'var(--surface2)';
-    el.style.color = 'var(--text2)';
-    el.style.border = '1px solid var(--border)';
-  });
-  const activeMap = { all:'fAll', noFundus:'fNoFundus', overdue:'fOverdue', hti:'fHTI', htifu:'fHTIFU' };
-  const activeEl = document.getElementById(activeMap[type]);
-  if (activeEl) { activeEl.style.background='var(--primary)'; activeEl.style.color='#fff'; activeEl.style.border='none'; }
-
-  renderPatientList(document.getElementById('searchInput')?.value||'');
-}
-
-function getFilteredPatients(patients, filter) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  if (filter === 'all') return patients;
-  return patients.filter(p => {
-    const visits = getVisitsForIC(p.ic);
-    const fundusVisits = visits.filter(v=>v['Keputusan Fundus']&&v['Keputusan Fundus']!=='Pendaftaran Baru'&&v['Keputusan Fundus']!=='');
-    const last = visits[0];
-    const outcome = last ? last['Tindakan / Outcome'] : '';
-    const nota = last ? (last['Nota']||'') : '';
-
-    if (filter === 'noFundus') return fundusVisits.length === 0;
-    if (filter === 'overdue') {
-      if (!last || !last['Tarikh TCA Seterusnya']) return false;
-      return new Date(last['Tarikh TCA Seterusnya']) < today;
-    }
-    if (filter === 'hti') return outcome.includes('Rujukan Eye HTI') || nota.toUpperCase().includes('REFER HTI');
-    if (filter === 'htifu') return outcome.includes('HTI Follow') || nota.toUpperCase().includes('HTI F/UP') || nota.toUpperCase().includes('HTI FOLLOW');
-    return true;
-  });
-}
-  const infoEl = document.getElementById('tcaDateInfo');
-  if (!infoEl || !val) return;
-  const d = new Date(val);
-  const day = d.getDay();
-  if (day===5||day===6||day===0) {
-    infoEl.innerHTML = `<div class="alert alert-warning" style="margin-top:4px">⚠️ ${dayName(val)} bukan hari peperiksaan fundus. Sila pilih Isnin–Khamis.</div>`;
-  } else {
-    infoEl.innerHTML = `<div class="alert alert-success" style="margin-top:4px">✅ ${dayName(val)}, ${formatDate(val)} — hari sah.</div>`;
-  }
-}
-
-function openModal(id) { document.getElementById('modal-'+id).classList.add('open'); }
-function closeModal(id) {
-  document.getElementById('modal-'+id).classList.remove('open');
-  editingRowId = null;
-  if (id==='addPatient') {
-    const i=document.getElementById('icAgeInfo'); if(i) i.innerHTML='';
-    const a=document.getElementById('fAge'); if(a) a.value='';
-  }
-}
-
-async function savePatient() {
-  const name = document.getElementById('fName').value.trim();
-  const ic   = document.getElementById('fIC').value.trim();
-  if (!name || !ic) { toast('Sila isi nama dan No. IC.','error'); return; }
-
-  const btn = document.getElementById('savePatientBtn');
-  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Menyimpan...';
-
-  // Create a visit row for this patient (first registration, no visit date yet)
-  const rowData = {
-    'ID': uid(),
-    'Nama Pesakit': name,
-    'No. IC': ic,
-    'No. Telefon': document.getElementById('fPhone').value,
-    'Jantina': document.getElementById('fGender').value,
-    'Umur': document.getElementById('fAge').value,
-    'MRN': document.getElementById('fMRN').value,
-    'Tarikh TCA': new Date().toISOString().slice(0,10),
-    'Keputusan Fundus': 'Pendaftaran Baru',
-    'Tindakan / Outcome': '—',
-  };
-
-  try {
-    const result = await pushRow('insert', rowData);
-    if (result.error) throw new Error(result.error);
-    toast('Pesakit baru ditambah ke Google Sheets!');
-    closeModal('addPatient');
-    await loadFromSheet();
-    selectPatient(ic);
-    // clear form
-    ['fName','fIC','fPhone','fAge','fMRN'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-    document.getElementById('fGender').value='';
-  } catch(e) {
-    toast('Gagal simpan: '+e.message,'error');
-  } finally {
-    btn.disabled=false; btn.innerHTML='💾 Simpan ke Sheet';
-  }
-}
-
-// ══════════════════════════════════════════════
-// VISIT
-// ══════════════════════════════════════════════
-let _visitIC = null;
-function openAddVisit(ic) {
-  _visitIC = ic;
-  clearVisitForm();
+function calcNextTCA(outcome) {
   const today = new Date();
-  document.getElementById('vDate').valueAsDate = today;
-  onVisitDateChange(); // validate today's day immediately
-  openModal('addVisit');
+  let target = null;
+  if (outcome === "3 Bulan") { target = new Date(today); target.setMonth(target.getMonth() + 3); }
+  else if (outcome === "6 Bulan") { target = new Date(today); target.setMonth(target.getMonth() + 6); }
+  else if (outcome === "1 Tahun") { target = new Date(today); target.setFullYear(target.getFullYear() + 1); }
+  if (!target) return "";
+  return Utilities.formatDate(nearestFundusDay(target), Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
 
-function clearVisitForm() {
-  ['vDate','vTime','vClinic','vFundusResult','vVaOD','vVaOS','vBP','vHbA1c','vNextTCA','vDoctor','vNotes','vReferDate','vReferNo','vReferHosp','vRefuseReason','vBlindEye','vBlindCause'].forEach(id=>{
-    const el=document.getElementById(id); if(el) el.value='';
-  });
-  document.getElementById('vTCAOutcome').value='';
-  document.querySelectorAll('.fundus-option').forEach(e=>e.classList.remove('selected'));
-  document.querySelectorAll('.tca-card').forEach(e=>e.classList.remove('selected'));
-  ['htiSection','refuseSection','blindSection'].forEach(id=>document.getElementById(id).classList.add('hidden'));
-  const i1=document.getElementById('tcaDateInfo'); if(i1) i1.innerHTML='';
-  const i2=document.getElementById('visitDateWarn'); if(i2) i2.innerHTML='';
-}
-
-function selectFundus(el, val) {
-  document.querySelectorAll('.fundus-option').forEach(e=>e.classList.remove('selected'));
-  el.classList.add('selected');
-  // Auto-assign TCA outcome + date based on fundus result
-  if(val.includes('Normal')) suggestTCA('1 Tahun');
-  else if(val.includes('Ringan')) suggestTCA('6 Bulan');
-  else if(val.includes('Sederhana')) suggestTCA('3 Bulan');
-  else if(val.includes('Teruk')||val.includes('PDR')||val.includes('DME')) suggestTCA('Rujukan Eye HTI');
-}
-function suggestTCA(outcome) {
-  document.querySelectorAll('.tca-card').forEach(el=>{
-    if(el.querySelector('.tca-label')?.textContent.includes(outcome)) el.click();
-  });
-}
-
-function selectTCA(el, val) {
-  document.querySelectorAll('.tca-card').forEach(e=>e.classList.remove('selected'));
-  el.classList.add('selected');
-  document.getElementById('vTCAOutcome').value=val;
-  document.getElementById('htiSection').classList.toggle('hidden', val!=='Rujukan Eye HTI');
-  document.getElementById('refuseSection').classList.toggle('hidden', val!=='Pesakit Enggan Rawatan');
-  document.getElementById('blindSection').classList.toggle('hidden', val!=='Pesakit Buta');
-  // Smart date assignment — Mon to Thu only
-  applySmartTCADate(val);
-}
-
-function selectRadio(el) {
-  document.querySelectorAll('[name="eyeSide"]').forEach(r=>r.closest('.radio-option').classList.remove('selected'));
-  el.classList.add('selected');
-}
-
-async function saveVisit() {
-  const date = document.getElementById('vDate').value;
-  const tca  = document.getElementById('vTCAOutcome').value;
-  if (!date||!tca) { toast('Sila isi tarikh dan tindakan TCA.','error'); return; }
-
-  const patients = getPatients();
-  const p = patients.find(x=>x.ic===_visitIC);
-  const btn = document.getElementById('saveVisitBtn');
-  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Menyimpan ke Sheet...';
-
-  const rowData = {
-    'ID': uid(),
-    'Nama Pesakit': p?.name||'',
-    'No. IC': _visitIC,
-    'No. Telefon': p?.phone||'',
-    'Jantina': p?.gender||'',
-    'Umur': p?.age||'',
-    'MRN': p?.mrn||'',
-    'Tarikh TCA': date,
-    'Masa': document.getElementById('vTime').value,
-    'Klinik': document.getElementById('vClinic').value,
-    'Keputusan Fundus': document.getElementById('vFundusResult').value || document.querySelector('.fundus-option.selected')?.textContent.trim() || '',
-    'Mata Diperiksa': document.querySelector('[name="eyeSide"]:checked')?.value||'OU',
-    'VA OD': document.getElementById('vVaOD').value,
-    'VA OS': document.getElementById('vVaOS').value,
-    'BP': document.getElementById('vBP').value,
-    'HbA1c': document.getElementById('vHbA1c').value,
-    'Tindakan / Outcome': tca,
-    'Tarikh TCA Seterusnya': document.getElementById('vNextTCA').value,
-    'Doktor': document.getElementById('vDoctor').value,
-    'Hospital Rujukan': document.getElementById('vReferHosp').value,
-    'Tarikh Rujukan': document.getElementById('vReferDate').value,
-    'No. Rujukan': document.getElementById('vReferNo').value,
-    'Sebab Enggan': document.getElementById('vRefuseReason').value,
-    'Mata Buta': document.getElementById('vBlindEye').value,
-    'Sebab Buta': document.getElementById('vBlindCause').value,
-    'Nota': document.getElementById('vNotes').value,
-  };
-
+// ── GET with pagination ──────────────────────────────────────
+function doGet(e) {
   try {
-    const result = await pushRow('insert', rowData);
-    if (result.error) throw new Error(result.error);
-    toast('Rekod disimpan ke Google Sheets! ✅');
-    closeModal('addVisit');
-    await loadFromSheet();
-    renderMainContent(_visitIC);
-  } catch(e) {
-    toast('Gagal simpan: '+e.message,'error');
-  } finally {
-    btn.disabled=false; btn.innerHTML='💾 Simpan ke Sheet';
+    const action = e.parameter.action;
+    const page   = parseInt(e.parameter.page || "0");
+    const limit  = parseInt(e.parameter.limit || "100");
+
+    if (action === "import") return makeResponse(importFromActiveNDR());
+
+    if (action === "count") {
+      const sheet = getTargetSheet();
+      if (!sheet) return makeResponse({ count: 0 });
+      const count = Math.max(0, sheet.getLastRow() - 1);
+      return makeResponse({ count: count });
+    }
+
+    ensureHeaders();
+    const sheet = getTargetSheet();
+    if (!sheet) return makeResponse({ error: "Sheet tidak dijumpai: " + TARGET_SHEET });
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return makeResponse({ rows: [], total: 0, page: 0 });
+
+    const allRows = data.slice(1).map(row => {
+      const obj = {};
+      COLUMNS.forEach((col, i) => { obj[col] = row[i] !== undefined ? String(row[i]) : ""; });
+      return obj;
+    });
+
+    const total = allRows.length;
+
+    // If page=-1, return ALL (for search/filter)
+    if (page === -1) return makeResponse({ rows: allRows, total: total });
+
+    // Return paginated
+    const start = page * limit;
+    const pageRows = allRows.slice(start, start + limit);
+    return makeResponse({ rows: pageRows, total: total, page: page, limit: limit, hasMore: start + limit < total });
+
+  } catch (err) {
+    return makeResponse({ error: err.message });
   }
 }
 
-async function deleteVisit(id, ic) {
-  if (!confirm('Padam rekod ini dari Google Sheets?')) return;
-  setSyncStatus('syncing','Memadamkan rekod...');
+// ── POST ─────────────────────────────────────────────────────
+function doPost(e) {
   try {
-    const result = await pushRow('delete', null, id);
-    if (result.error) throw new Error(result.error);
-    toast('Rekod dipadam dari sheet.','error');
-    await loadFromSheet();
-    renderMainContent(ic);
-  } catch(e) {
-    toast('Gagal padam: '+e.message,'error');
-    setSyncStatus('err','Ralat');
+    ensureHeaders();
+    const payload = JSON.parse(e.postData.contents);
+    const action  = payload.action;
+    if (action === "insert") return makeResponse(insertRow(payload.row));
+    if (action === "update") return makeResponse(updateRow(payload.id, payload.row));
+    if (action === "delete") return makeResponse(deleteRow(payload.id));
+    return makeResponse({ error: "Unknown action: " + action });
+  } catch (err) {
+    return makeResponse({ error: err.message });
   }
 }
 
-// ══════════════════════════════════════════════
-// STATS
-// ══════════════════════════════════════════════
-function openStats() {
-  const patients = getPatients();
-  const outcomes = {};
-  const fundusMap = {};
-  rows.forEach(r=>{
-    const o=r['Tindakan / Outcome']; if(o&&o!=='—') outcomes[o]=(outcomes[o]||0)+1;
-    const f=r['Keputusan Fundus']; if(f&&f!=='Pendaftaran Baru') fundusMap[f]=(fundusMap[f]||0)+1;
+function insertRow(row) {
+  const sheet = getTargetSheet();
+  const values = COLUMNS.map(col => {
+    if (col === "Timestamp") return new Date().toLocaleString("ms-MY");
+    return row[col] !== undefined ? row[col] : "";
   });
-  const totalVisits = rows.filter(r=>r['Keputusan Fundus']!=='Pendaftaran Baru').length;
-
-  document.getElementById('statsBody').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-      ${[['Pesakit',patients.length,'var(--primary)'],['Jumlah Lawatan',totalVisits,'var(--green)'],['Rujukan HTI',outcomes['Rujukan Eye HTI']||0,'var(--accent)'],['Enggan/Buta',(outcomes['Pesakit Enggan Rawatan']||0)+(outcomes['Pesakit Buta']||0),'var(--orange)']].map(([l,n,c])=>`
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:${c}">${n}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">${l}</div>
-        </div>`).join('')}
-    </div>
-    <div class="card" style="margin-bottom:10px">
-      <div class="card-header"><span class="card-title">Tindakan TCA</span></div>
-      <div class="card-body">${Object.entries(outcomes).map(([k,v])=>`
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span class="badge ${getBadgeClass(k)}" style="min-width:160px;justify-content:center">${k}</span>
-          <div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden">
-            <div style="width:${totalVisits?Math.round(v/totalVisits*100):0}%;height:100%;background:var(--primary);border-radius:4px"></div>
-          </div>
-          <strong style="font-family:var(--mono);font-size:12px;min-width:24px;text-align:right">${v}</strong>
-        </div>`).join('')}</div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Keputusan Fundus</span></div>
-      <div class="card-body">${Object.entries(fundusMap).map(([k,v])=>`
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span class="badge ${getFundusBadge(k)}" style="min-width:160px;justify-content:center">${k}</span>
-          <div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden">
-            <div style="width:${totalVisits?Math.round(v/totalVisits*100):0}%;height:100%;background:var(--primary-light);border-radius:4px"></div>
-          </div>
-          <strong style="font-family:var(--mono);font-size:12px;min-width:24px;text-align:right">${v}</strong>
-        </div>`).join('')}</div>
-    </div>`;
-  openModal('stats');
+  sheet.appendRow(values);
+  return { success: true, id: row["ID"] };
 }
 
-// ══════════════════════════════════════════════
-// EXPORT
-// ══════════════════════════════════════════════
-function exportCSV() {
-  const cols = ['Nama Pesakit','No. IC','No. Telefon','Tarikh TCA','Keputusan Fundus','VA OD','VA OS','BP','HbA1c','Tindakan / Outcome','Tarikh TCA Seterusnya','Hospital Rujukan','Doktor','Nota'];
-  const csv = [cols, ...rows.map(r=>cols.map(c=>`"${(r[c]||'').replace(/"/g,'""')}"`))]
-    .map(r=>r.join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  a.download = `funduscopy_tca_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  toast('CSV dieksport!');
+function updateRow(id, row) {
+  const sheet = getTargetSheet();
+  const data  = sheet.getDataRange().getValues();
+  const idCol = COLUMNS.indexOf("ID");
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      const values = COLUMNS.map((col, idx) => {
+        if (col === "Timestamp") return new Date().toLocaleString("ms-MY");
+        return row[col] !== undefined ? row[col] : data[i][idx];
+      });
+      sheet.getRange(i + 1, 1, 1, COLUMNS.length).setValues([values]);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Row tidak dijumpai" };
 }
 
-// ══════════════════════════════════════════════
-// TOAST
-// ══════════════════════════════════════════════
-function toast(msg, type='success') {
-  const tc = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = `toast toast-${type}`;
-  t.textContent = msg;
-  tc.appendChild(t);
-  setTimeout(()=>t.remove(), 3500);
+function deleteRow(id) {
+  const sheet = getTargetSheet();
+  const data  = sheet.getDataRange().getValues();
+  const idCol = COLUMNS.indexOf("ID");
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][idCol]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Row tidak dijumpai" };
 }
-</script>
-</body>
-</html>
+
+function importFromActiveNDR() {
+  const source = getSourceSheet();
+  const target = getTargetSheet();
+  if (!source) return { success: false, error: "Sheet sumber tidak dijumpai: [" + SOURCE_SHEET + "]" };
+  if (!target) return { success: false, error: "Sheet target tidak dijumpai: [" + TARGET_SHEET + "]" };
+
+  ensureHeaders();
+
+  const targetData = target.getDataRange().getValues();
+  const existingICs = new Set();
+  const icColIdx = COLUMNS.indexOf("No. IC");
+  for (let i = 1; i < targetData.length; i++) {
+    if (targetData[i][icColIdx]) existingICs.add(String(targetData[i][icColIdx]).trim());
+  }
+
+  const sourceData = source.getDataRange().getValues();
+  let imported = 0;
+  let skipped = 0;
+
+  for (let i = 2; i < sourceData.length; i++) {
+    const row = sourceData[i];
+    const name = String(row[COL_NAME] || "").trim();
+    const ic   = String(row[COL_IC] || "").trim();
+    if (!name || !ic) { skipped++; continue; }
+    if (existingICs.has(ic)) { skipped++; continue; }
+
+    const remarks = String(row[COL_REMARKS] || "").trim();
+    const status  = String(row[COL_STATUS] || "").trim();
+    const outcome = mapRemarksToOutcome(remarks);
+    const nextTCA = calcNextTCA(outcome);
+
+    let age = "", gender = "";
+    const icClean = ic.replace(/-/g, "");
+    if (icClean.length >= 6) {
+      const yy = parseInt(icClean.slice(0, 2));
+      const mm = parseInt(icClean.slice(2, 4));
+      const dd = parseInt(icClean.slice(4, 6));
+      const fullYear = yy > (new Date().getFullYear() % 100) ? 1900 + yy : 2000 + yy;
+      const dob = new Date(fullYear, mm - 1, dd);
+      let calcAge = new Date().getFullYear() - dob.getFullYear();
+      const mDiff = new Date().getMonth() - dob.getMonth();
+      if (mDiff < 0 || (mDiff === 0 && new Date().getDate() < dob.getDate())) calcAge--;
+      if (calcAge >= 0 && calcAge <= 120) age = calcAge;
+    }
+    if (icClean.length >= 12) {
+      const lastDigit = parseInt(icClean.slice(11, 12));
+      if (!isNaN(lastDigit)) gender = lastDigit % 2 === 1 ? "Lelaki" : "Perempuan";
+    }
+
+    const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const newRow = COLUMNS.map(col => {
+      if (col === "ID") return uid;
+      if (col === "Nama Pesakit") return name;
+      if (col === "No. IC") return ic;
+      if (col === "Umur") return age;
+      if (col === "Jantina") return gender;
+      if (col === "Tindakan / Outcome") return outcome;
+      if (col === "Tarikh TCA Seterusnya") return nextTCA;
+      if (col === "Nota") return remarks;
+      if (col === "Status NDR") return status;
+      if (col === "Timestamp") return new Date().toLocaleString("ms-MY");
+      return "";
+    });
+
+    target.appendRow(newRow);
+    existingICs.add(ic);
+    imported++;
+    Utilities.sleep(30);
+  }
+
+  return { success: true, imported: imported, skipped: skipped, message: imported + " pesakit berjaya diimport!" };
+}
+
+function debugSheets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets();
+  Logger.log("Semua tab: " + sheets.map(s => "'" + s.getName() + "'").join(", "));
+}
