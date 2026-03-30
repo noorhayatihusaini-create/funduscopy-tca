@@ -463,25 +463,29 @@
 
 <script>
 // ══════════════════════════════════════════════
-// CONFIG
+// CONFIG — URL dah embedded terus
 // ══════════════════════════════════════════════
-let SCRIPT_URL = localStorage.getItem('fundus_script_url') || '';
-let rows = [];            // flat rows from sheet — each row = one visit record
-let selectedIC = null;    // current patient IC
+const HARDCODED_URL = 'https://script.google.com/macros/s/AKfycbzNEIvLGjs_kYIQDulK9jNmEUEuQx6hzvn6my53KTcPZpJYxJA595HouS_a8tdKRe9j8g/exec';
+let SCRIPT_URL = localStorage.getItem('fundus_script_url') || HARDCODED_URL;
+let rows = [];
+let selectedIC = null;
 let editingRowId = null;
 let syncInterval = null;
 let lastSync = null;
 
 // ══════════════════════════════════════════════
-// SETUP
+// SETUP — Auto-connect terus tanpa perlu setup screen
 // ══════════════════════════════════════════════
 window.onload = () => {
-  if (SCRIPT_URL) {
-    document.getElementById('scriptUrl').value = SCRIPT_URL;
-    showApp();
-    loadFromSheet();
-    startAutoSync();
-  }
+  // Always use hardcoded URL if no custom URL saved
+  if (!SCRIPT_URL) SCRIPT_URL = HARDCODED_URL;
+  // Pre-fill setup form
+  const urlEl = document.getElementById('scriptUrl');
+  if (urlEl) urlEl.value = SCRIPT_URL;
+  // Auto-connect immediately
+  showApp();
+  loadFromSheet(false);
+  startAutoSync();
 };
 
 function connectSheet() {
