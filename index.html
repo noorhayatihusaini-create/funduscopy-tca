@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,7 +66,7 @@
   .btn-outline:hover{background:var(--primary-dim)}
 
   /* LAYOUT */
-  .layout{display:flex;height:calc(100vh - 52px - 33px);overflow:hidden}
+  .layout{display:flex;height:calc(100vh - 52px - 33px - 42px);overflow:hidden}
 
   /* SIDEBAR */
   .sidebar{width:290px;min-width:250px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
@@ -237,7 +236,8 @@
   </div>
   <div class="header-right">
     <button class="btn btn-white" onclick="syncNow()">🔄 Sync</button>
-    <button class="btn btn-white" onclick="exportCSV()">📥 CSV</button>
+    <button class="btn btn-white" onclick="importFromNDR()" id="importBtn">📥 Import NDR</button>
+    <button class="btn btn-white" onclick="exportCSV()">📤 CSV</button>
     <button class="btn btn-white" onclick="openStats()">📊 Statistik</button>
     <button class="btn btn-white" onclick="openModal('addPatient')">+ Pesakit Baru</button>
     <button class="btn btn-white" style="font-size:10px;opacity:.7" onclick="changeSheet()">⚙️</button>
@@ -251,6 +251,17 @@
   <span class="sync-time" id="syncTime"></span>
 </div>
 
+<!-- DASHBOARD STATS -->
+<div id="dashStats" style="display:none;background:#fff;border-bottom:1px solid var(--border);padding:8px 20px;display:none">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <div onclick="filterBy('all')" id="fAll" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--primary);color:#fff">👥 Semua: <span id="dTotal">0</span></div>
+    <div onclick="filterBy('noFundus')" id="fNoFundus" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">⏳ Belum Fundus: <span id="dNoFundus">0</span></div>
+    <div onclick="filterBy('overdue')" id="fOverdue" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">⚠️ TCA Lepas: <span id="dOverdue">0</span></div>
+    <div onclick="filterBy('hti')" id="fHTI" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">🏥 Refer HTI: <span id="dHTI">0</span></div>
+    <div onclick="filterBy('htifu')" id="fHTIFU" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">🔭 HTI F/U: <span id="dHTIFU">0</span></div>
+  </div>
+</div>
+
 <!-- LAYOUT -->
 <div class="layout" id="appLayout" style="display:none">
   <div class="sidebar">
@@ -259,7 +270,7 @@
       <span id="patientCount" class="badge badge-blue">0</span>
     </div>
     <div class="sidebar-search">
-      <input type="text" class="search-input" placeholder="🔍  Cari nama / IC..." oninput="filterPatients(this.value)">
+      <input type="text" id="searchInput" class="search-input" placeholder="🔍  Cari nama / IC..." oninput="filterPatients(this.value)">
     </div>
     <div class="patient-list" id="patientList">
       <div class="empty-list">Memuatkan data...</div>
@@ -270,7 +281,10 @@
       <div style="font-size:40px;margin-bottom:10px">👁️</div>
       <div style="font-size:17px;font-weight:600;color:var(--text2);margin-bottom:6px">Sistem TCA Funduscopy</div>
       <p class="text-sm">Pilih pesakit dari senarai atau tambah pesakit baru.</p>
-      <button class="btn btn-primary" style="margin-top:14px" onclick="openModal('addPatient')">+ Tambah Pesakit Baru</button>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="openModal('addPatient')">+ Tambah Pesakit Baru</button>
+        <button class="btn btn-outline" onclick="importFromNDR()">📥 Import dari NDR</button>
+      </div>
     </div>
   </div>
 </div>
@@ -487,6 +501,7 @@ function showApp() {
   document.getElementById('appHeader').style.display = 'flex';
   document.getElementById('syncBar').style.display = 'flex';
   document.getElementById('appLayout').style.display = 'flex';
+  document.getElementById('dashStats').style.display = 'flex';
 }
 
 function changeSheet() {
@@ -523,6 +538,7 @@ async function loadFromSheet(fromSetup=false) {
     document.getElementById('syncTime').textContent = 'Dikemaskini: ' + lastSync.toLocaleTimeString('ms-MY');
     setSyncStatus('ok', 'Bersambung ke Google Sheets (' + rows.length + ' rekod)');
     renderPatientList();
+    updateDashStats();
 
     if (fromSetup) {
       showApp();
@@ -643,17 +659,20 @@ function formatDate(d) {
 // ══════════════════════════════════════════════
 function renderPatientList(filter='') {
   const list = document.getElementById('patientList');
-  const patients = getPatients();
+  let patients = getPatients();
   const fl = filter.toLowerCase();
-  const filtered = patients.filter(p => p.name.toLowerCase().includes(fl) || p.ic.includes(fl));
+  // Apply text search
+  if (fl) patients = patients.filter(p => p.name.toLowerCase().includes(fl) || p.ic.includes(fl));
+  // Apply dashboard filter
+  patients = getFilteredPatients(patients, currentFilter);
   document.getElementById('patientCount').textContent = patients.length;
 
-  if (filtered.length === 0) {
+  if (patients.length === 0) {
     list.innerHTML = '<div class="empty-list">' + (rows.length === 0 ? 'Tiada rekod dalam sheet.<br>Tambah pesakit baru.' : 'Tiada rekod dijumpai.') + '</div>';
     return;
   }
 
-  list.innerHTML = filtered.map(p => {
+  list.innerHTML = patients.map(p => {
     const visits = getVisitsForIC(p.ic);
     const last = visits[0];
     const dot = getStatusDot(last);
@@ -868,7 +887,109 @@ function onVisitDateChange() {
   const currentOutcome = document.getElementById('vTCAOutcome').value;
   if (currentOutcome && !NO_DATE_OUTCOMES.includes(currentOutcome)) applySmartTCADate(currentOutcome);
 }
-function showManualDateInfo(val) {
+// ══════════════════════════════════════════════
+// IMPORT FROM NDR
+// ══════════════════════════════════════════════
+async function importFromNDR() {
+  if (!confirm('Import pesakit baru dari ACTIVE PT NDR?\n\nPesakit yang sudah ada dalam sistem akan dilangkau (tiada duplikat).')) return;
+  const btn = document.getElementById('importBtn');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Importing...'; }
+  setSyncStatus('syncing','Mengimport pesakit dari ACTIVE PT NDR...');
+  try {
+    const res = await fetch(SCRIPT_URL + '?action=import', { method:'GET', mode:'cors' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    toast(`✅ ${data.message}`, 'success');
+    await loadFromSheet();
+    renderPatientList();
+    updateDashStats();
+  } catch(e) {
+    toast('Gagal import: '+e.message, 'error');
+    setSyncStatus('err','Ralat import');
+  } finally {
+    if (btn) { btn.disabled=false; btn.innerHTML='📥 Import NDR'; }
+  }
+}
+
+// ══════════════════════════════════════════════
+// DASHBOARD STATS & FILTER
+// ══════════════════════════════════════════════
+let currentFilter = 'all';
+
+function updateDashStats() {
+  const dash = document.getElementById('dashStats');
+  if (dash) dash.style.display = 'flex';
+
+  const patients = getPatients();
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  let noFundus=0, overdue=0, hti=0, htifu=0;
+  patients.forEach(p => {
+    const visits = getVisitsForIC(p.ic).filter(v=>v['Keputusan Fundus']&&v['Keputusan Fundus']!=='Pendaftaran Baru'&&v['Keputusan Fundus']!=='');
+    const last = getVisitsForIC(p.ic)[0];
+    const outcome = last ? last['Tindakan / Outcome'] : '';
+    const nota = last ? last['Nota'] : '';
+
+    // Belum buat fundus — tiada keputusan fundus langsung
+    if (visits.length === 0) noFundus++;
+
+    // TCA dah lepas
+    if (last && last['Tarikh TCA Seterusnya']) {
+      const next = new Date(last['Tarikh TCA Seterusnya']);
+      if (next < today) overdue++;
+    }
+
+    // Refer HTI
+    if (outcome.includes('Rujukan Eye HTI') || nota.toUpperCase().includes('REFER HTI')) hti++;
+
+    // HTI Follow Up
+    if (outcome.includes('HTI Follow') || nota.toUpperCase().includes('HTI F/UP') || nota.toUpperCase().includes('HTI FOLLOW')) htifu++;
+  });
+
+  document.getElementById('dTotal').textContent = patients.length;
+  document.getElementById('dNoFundus').textContent = noFundus;
+  document.getElementById('dOverdue').textContent = overdue;
+  document.getElementById('dHTI').textContent = hti;
+  document.getElementById('dHTIFU').textContent = htifu;
+}
+
+function filterBy(type) {
+  currentFilter = type;
+  // Update active button style
+  ['fAll','fNoFundus','fOverdue','fHTI','fHTIFU'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.background = 'var(--surface2)';
+    el.style.color = 'var(--text2)';
+    el.style.border = '1px solid var(--border)';
+  });
+  const activeMap = { all:'fAll', noFundus:'fNoFundus', overdue:'fOverdue', hti:'fHTI', htifu:'fHTIFU' };
+  const activeEl = document.getElementById(activeMap[type]);
+  if (activeEl) { activeEl.style.background='var(--primary)'; activeEl.style.color='#fff'; activeEl.style.border='none'; }
+
+  renderPatientList(document.getElementById('searchInput')?.value||'');
+}
+
+function getFilteredPatients(patients, filter) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (filter === 'all') return patients;
+  return patients.filter(p => {
+    const visits = getVisitsForIC(p.ic);
+    const fundusVisits = visits.filter(v=>v['Keputusan Fundus']&&v['Keputusan Fundus']!=='Pendaftaran Baru'&&v['Keputusan Fundus']!=='');
+    const last = visits[0];
+    const outcome = last ? last['Tindakan / Outcome'] : '';
+    const nota = last ? (last['Nota']||'') : '';
+
+    if (filter === 'noFundus') return fundusVisits.length === 0;
+    if (filter === 'overdue') {
+      if (!last || !last['Tarikh TCA Seterusnya']) return false;
+      return new Date(last['Tarikh TCA Seterusnya']) < today;
+    }
+    if (filter === 'hti') return outcome.includes('Rujukan Eye HTI') || nota.toUpperCase().includes('REFER HTI');
+    if (filter === 'htifu') return outcome.includes('HTI Follow') || nota.toUpperCase().includes('HTI F/UP') || nota.toUpperCase().includes('HTI FOLLOW');
+    return true;
+  });
+}
   const infoEl = document.getElementById('tcaDateInfo');
   if (!infoEl || !val) return;
   const d = new Date(val);
